@@ -75,6 +75,7 @@ class BlackjackApp:
         self.setup = tk.Toplevel(self.root)
         self.setup.title("Nuova partita")
         self.setup.resizable(False, False)
+        self.setup.attributes("-topmost", True)
         self.setup.grab_set()
         frame = ttk.Frame(self.setup, padding=22)
         frame.grid()
@@ -93,6 +94,15 @@ class BlackjackApp:
         ttk.Entry(frame, textvariable=self.credits_var, width=8).grid(row=3, column=1, sticky="e", pady=5)
         ttk.Button(frame, text="Inizia partita", command=self.start_game).grid(row=4, columnspan=2, pady=(14, 0))
         self.setup.bind("<Return>", lambda _event: self.start_game())
+        self.setup.update_idletasks()
+        width = self.setup.winfo_width()
+        height = self.setup.winfo_height()
+        screen_width = self.setup.winfo_screenwidth()
+        screen_height = self.setup.winfo_screenheight()
+        x = max(0, (screen_width - width) // 2)
+        y = max(0, (screen_height - height) // 2)
+        self.setup.geometry(f"{width}x{height}+{x}+{y}")
+        self.setup.lift()
 
     def update_names(self) -> None:
         if not hasattr(self, "name_frame"):
@@ -124,6 +134,7 @@ class BlackjackApp:
         self.players = [Player(name, credits=credits) for name in names]
         self.setup.destroy()
         self.build_table()
+        self.root.state("zoomed")
         self.new_round()
 
     def build_table(self) -> None:
