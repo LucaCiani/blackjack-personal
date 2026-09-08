@@ -132,10 +132,13 @@ class BlackjackApp:
             messagebox.showerror("Crediti non validi", "I crediti iniziali devono essere almeno 1.", parent=self.setup)
             return
         self.players = [Player(name, credits=credits) for name in names]
+        self.setup.grab_release()
         self.setup.destroy()
         self.build_table()
+        self.root.deiconify()
         self.root.state("zoomed")
-        self.new_round()
+        self.root.update_idletasks()
+        self.root.after_idle(self.new_round)
 
     def build_table(self) -> None:
         header = tk.Frame(self.root, bg="#083b22")
@@ -199,6 +202,7 @@ class BlackjackApp:
         dialog.title("Puntate")
         dialog.resizable(False, False)
         dialog.transient(self.root)
+        dialog.attributes("-topmost", True)
         dialog.grab_set()
         frame = ttk.Frame(dialog, padding=18)
         frame.grid()
@@ -240,6 +244,16 @@ class BlackjackApp:
 
         ttk.Button(frame, text="Conferma puntate", command=confirm).grid(row=len(self.players) + 2, columnspan=3, pady=(14, 0))
         dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.update_idletasks()
+        width = dialog.winfo_width()
+        height = dialog.winfo_height()
+        screen_width = dialog.winfo_screenwidth()
+        screen_height = dialog.winfo_screenheight()
+        x = max(0, (screen_width - width) // 2)
+        y = max(0, (screen_height - height) // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+        dialog.lift()
+        dialog.focus_force()
         self.root.wait_window(dialog)
         return confirmed
 
