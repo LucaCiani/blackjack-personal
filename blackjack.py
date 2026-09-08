@@ -75,6 +75,13 @@ class BlackjackApp:
         self.deck: list[Card] = []
         self.current_player = 0
         self.round_over = False
+        self.dealing = False
+        self.deal_sequence: list[tuple[str, int | None]] = []
+        self.deal_index = 0
+        self.deal_effect: tuple[str, int | None] | None = None
+        self.deal_card_frames: dict[tuple[int, int], tk.Frame] = {}
+        self.dealer_card_frames: list[tk.Frame] = []
+        self.player_cards_frames: dict[tuple[int, int], tk.Frame] = {}
         self.images: dict[str, tk.PhotoImage] = {}
         self.show_setup()
 
@@ -173,7 +180,8 @@ class BlackjackApp:
         self.dealer_frame.grid(row=0, column=0, sticky="ew", padx=18, pady=8)
         dealer_toolbar = tk.Frame(self.dealer_frame, bg="#0b542d")
         dealer_toolbar.pack(fill="x", padx=8, pady=(2, 0))
-        tk.Button(dealer_toolbar, text="Nuova partita", command=self.show_setup).pack(side="right")
+        self.new_game_button = tk.Button(dealer_toolbar, text="Nuova partita", command=self.show_setup)
+        self.new_game_button.pack(side="right")
         self.dealer_cards = tk.Frame(self.dealer_frame, bg="#0b542d")
         self.dealer_cards.pack(pady=8)
         self.dealer_value_label = tk.Label(self.dealer_frame, text="", bg="#0b542d", fg="white", font=("Segoe UI", 10, "bold"))
@@ -227,6 +235,7 @@ class BlackjackApp:
             self.double_button.config(state="disabled")
             self.split_button.config(state="disabled")
             self.next_button.config(state="disabled")
+            self.new_game_button.config(state="disabled")
             return
         if not self.collect_bets():
             return
@@ -240,20 +249,85 @@ class BlackjackApp:
             player.current_hand = 0
             player.round_result = ""
             player.credit_change = 0
-        for _ in range(2):
-            for player in self.players:
-                player.hands[0].cards.append(self.deck.pop())
-            self.dealer.cards.append(self.deck.pop())
         self.current_player = 0
         self.round_over = False
-        self.hit_button.config(state="normal")
-        self.stand_button.config(state="normal")
-        self.double_button.config(state="normal")
-        self.split_button.config(state="normal")
+        self.dealing = True
+        self.deal_sequence = []
+        for _ in range(2):
+            self.deal_sequence.extend(("player", index) for index in range(len(self.players)))
+            self.deal_sequence.append(("dealer", None))
+        self.deal_index = 0
+        self.deal_effect = None
+        self.hit_button.config(state="disabled")
+        self.stand_button.config(state="disabled")
+        self.double_button.config(state="disabled")
+        self.split_button.config(state="disabled")
         self.next_button.config(state="disabled")
+        self.render(hide_dealer=True, show_hand_values=False)
+        self.root.after(500, self.deal_next_card)
+
+    def deal_next_card(self) -> None:
+        if not self.dealing or self.deal_index >= len(self.deal_sequence):
+            return
+        target, player_index = self.deal_sequence[self.deal_index]
+        if target == "dealer":
+            self.dealer.cards.append(self.deck.pop())
+        else:
+            self.players[player_index].hands[0].cards.append(self.deck.pop())
+        self.deal_index += 1
+        self.deal_effect = (target, player_index)
+        self.render_deal_card(target, player_index)
+        self.root.after(150, self.clear_deal_effect)
+        if self.deal_index < len(self.deal_sequence):
+            self.root.after(500, self.deal_next_card)
+            return
+        self.dealing = False
+        self.new_game_button.config(state="normal")
+        self.render(hide_dealer=True, show_hand_values=True)
         self.advance_automatic_players()
         if not self.round_over:
-            self.render(hide_dealer=True)
+            self.render(hide_dealer=True, show_hand_values=True)
+
+    def clear_deal_effect(self) -> None:
+        if self.deal_effect is None:
+            return
+        effect = self.deal_effect
+        self.deal_effect = None
+        if self.dealing:
+            frames = self.dealer_card_frames if effect == ("dealer", None) else self.deal_card_frames.values()
+            for frame in frames:
+                frame.configure(highlightthickness=0)
+
+    def render_deal_card(self, target: str, player_index: int | None) -> None:
+        if target == "dealer":
+            card = self.dealer.cards[-1]
+            is_hidden = len(self.dealer.cards) == 2
+            frame = tk.Frame(
+                self.dealer_cards,
+                bg="#173c2b" if is_hidden else "#0b542d",
+                highlightthickness=2,
+                highlightbackground="#f8d66d",
+            )
+            if is_hidden:
+                tk.Label(frame, text="?", bg="#173c2b", fg="#f8d66d", font=("Segoe UI", 22, "bold")).pack(padx=28, pady=45)
+            else:
+                tk.Label(frame, image=self.card_image(card, 5), bg="#0b542d").pack()
+                tk.Label(frame, text=self.card_value_text(card), bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
+            frame.pack(side="left", padx=4)
+            self.dealer_card_frames.append(frame)
+            return
+        assert player_index is not None
+        hand = self.players[player_index].hands[0]
+        cards_frame = self.player_cards_frames[(player_index, 0)]
+        card = hand.cards[-1]
+        compactness = 850 if len(self.players[player_index].hands) > 1 else 650
+        available_width = max(100, self.root.winfo_width() // max(1, min(5, len(self.players))) - 30)
+        card_factor = max(6, ceil(compactness * len(hand.cards) / available_width))
+        card_frame = tk.Frame(cards_frame, bg="#0b542d", highlightthickness=2, highlightbackground="#f8d66d")
+        tk.Label(card_frame, image=self.card_image(card, card_factor), bg="#0b542d").pack()
+        tk.Label(card_frame, text=self.card_value_text(card), bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
+        card_frame.pack(side="left", padx=2)
+        self.deal_card_frames[(player_index, len(hand.cards) - 1)] = card_frame
 
     def collect_bets(self) -> bool:
         dialog = tk.Toplevel(self.root)
@@ -345,7 +419,7 @@ class BlackjackApp:
             self.dealer_turn()
 
     def hit(self) -> None:
-        if self.round_over or self.current_player >= len(self.players):
+        if self.dealing or self.round_over or self.current_player >= len(self.players):
             return
         hand = self.players[self.current_player].active_hand()
         hand.cards.append(self.deck.pop())
@@ -359,7 +433,7 @@ class BlackjackApp:
             self.render(hide_dealer=True)
 
     def double_down(self) -> None:
-        if self.round_over or self.current_player >= len(self.players) or not self.can_double():
+        if self.dealing or self.round_over or self.current_player >= len(self.players) or not self.can_double():
             return
         player = self.players[self.current_player]
         hand = player.active_hand()
@@ -374,7 +448,7 @@ class BlackjackApp:
             self.render(hide_dealer=True)
 
     def split_hand(self) -> None:
-        if self.round_over or self.current_player >= len(self.players) or not self.can_split():
+        if self.dealing or self.round_over or self.current_player >= len(self.players) or not self.can_split():
             return
         player = self.players[self.current_player]
         hand = player.active_hand()
@@ -396,7 +470,7 @@ class BlackjackApp:
             self.render(hide_dealer=True)
 
     def stand(self) -> None:
-        if self.round_over or self.current_player >= len(self.players):
+        if self.dealing or self.round_over or self.current_player >= len(self.players):
             return
         self.players[self.current_player].active_hand().stood = True
         self.players[self.current_player].current_hand += 1
@@ -496,16 +570,32 @@ class BlackjackApp:
             return "1/11"
         return str(CARD_VALUES[card.rank])
 
-    def render(self, hide_dealer: bool) -> None:
+    def render(self, hide_dealer: bool, show_hand_values: bool = True) -> None:
+        self.deal_card_frames = {}
+        self.dealer_card_frames = []
+        self.player_cards_frames = {}
         for widget in self.dealer_cards.winfo_children():
             widget.destroy()
         for index, card in enumerate(self.dealer.cards):
+            is_effect_card = self.deal_effect == ("dealer", None) and index == len(self.dealer.cards) - 1
             if hide_dealer and index == 1:
-                label = tk.Frame(self.dealer_cards, width=88, height=128, bg="#173c2b", highlightthickness=1, highlightbackground="#f8d66d")
+                label = tk.Frame(
+                    self.dealer_cards,
+                    width=88,
+                    height=128,
+                    bg="#173c2b",
+                    highlightthickness=2 if is_effect_card else 1,
+                    highlightbackground="#f8d66d",
+                )
                 label.pack_propagate(False)
                 tk.Label(label, text="?", bg="#173c2b", fg="#f8d66d", font=("Segoe UI", 22, "bold")).place(relx=0.5, rely=0.5, anchor="center")
             else:
-                label = tk.Frame(self.dealer_cards, bg="#0b542d")
+                label = tk.Frame(
+                    self.dealer_cards,
+                    bg="#0b542d",
+                    highlightthickness=2 if is_effect_card else 0,
+                    highlightbackground="#f8d66d",
+                )
                 tk.Label(label, image=self.card_image(card, 5), bg="#0b542d").pack()
                 tk.Label(label, text=self.card_value_text(card), bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
             label.pack(side="left", padx=4)
@@ -519,6 +609,11 @@ class BlackjackApp:
             title = f"  TURNO DI {player.name.upper()}  " if active else f"  {player.name}  "
             box = tk.LabelFrame(self.players_frame, text=title, bg=background, fg="#f8d66d", bd=3 if active else 1, relief="solid" if active else "groove", font=("Segoe UI", 12, "bold"))
             columns = min(5, len(self.players))
+            rows = ceil(len(self.players) / columns)
+            box_width = max(160, (self.root.winfo_width() - 36 - (columns - 1) * 10) // columns)
+            box_height = max(180, (self.root.winfo_height() - 300) // rows)
+            box.configure(width=box_width, height=box_height)
+            box.grid_propagate(False)
             box.grid(row=index // columns, column=index % columns, sticky="nsew", padx=5, pady=4)
             available_width = max(100, self.root.winfo_width() // max(1, columns) - 30)
             box.columnconfigure(0, weight=1)
@@ -547,19 +642,31 @@ class BlackjackApp:
                 suffix = "  (BLACKJACK)" if hand.is_blackjack() else ""
                 cards = tk.Frame(hand_frame, bg=background)
                 cards.pack(anchor="e")
+                self.player_cards_frames[(index, hand_index)] = cards
                 compactness = 850 if len(player.hands) > 1 else 650
                 card_factor = max(6, ceil(compactness * len(hand.cards) / available_width))
                 for card in hand.cards:
-                    card_frame = tk.Frame(cards, bg=background)
+                    is_effect_card = (
+                        self.deal_effect == ("player", index)
+                        and hand_index == 0
+                        and card is hand.cards[-1]
+                    )
+                    card_frame = tk.Frame(
+                        cards,
+                        bg=background,
+                        highlightthickness=2 if is_effect_card else 0,
+                        highlightbackground="#f8d66d",
+                    )
                     card_frame.pack(side="left", padx=2)
                     tk.Label(card_frame, image=self.card_image(card, card_factor), bg=background).pack()
                     tk.Label(card_frame, text=self.card_value_text(card), bg=background, fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
                 hand_data = tk.Frame(info_frame, bg="#104a2d")
                 hand_data.pack(anchor="nw", pady=(8 if hand_index == 0 else 5, 0))
-                if label:
+                if label and show_hand_values:
                     tk.Label(hand_data, text=label, bg="#104a2d", fg="#f8d66d", font=("Segoe UI", 9, "bold"), justify="left").pack(anchor="w")
-                tk.Label(hand_data, text=f"Valore: {value}{suffix}", bg="#104a2d", fg="white", font=("Segoe UI", 8, "bold"), justify="left").pack(anchor="w")
-                tk.Label(hand_data, text=f"Puntata: {player.hand_bets[hand_index]}", bg="#104a2d", fg="#f8d66d", font=("Segoe UI", 8, "bold")).pack(anchor="w")
+                if show_hand_values:
+                    tk.Label(hand_data, text=f"Valore: {value}{suffix}", bg="#104a2d", fg="white", font=("Segoe UI", 8, "bold"), justify="left").pack(anchor="w")
+                    tk.Label(hand_data, text=f"Puntata: {player.hand_bets[hand_index]}", bg="#104a2d", fg="#f8d66d", font=("Segoe UI", 8, "bold")).pack(anchor="w")
             if self.round_over and player.round_result:
                 result_color = "#7dff9b" if "vince" in player.round_result else "#ff8585" if "perde" in player.round_result or "sballato" in player.round_result else "#f8d66d"
                 tk.Label(
