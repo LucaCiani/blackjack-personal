@@ -293,6 +293,7 @@ class BlackjackApp:
             self.root.after(500, self.deal_next_card)
             return
         self.dealing = False
+        self.deal_effect = None
         self.new_game_button.config(state="normal")
         self.render(hide_dealer=True, show_hand_values=True)
         self.advance_automatic_players()
@@ -328,20 +329,51 @@ class BlackjackApp:
             self.dealer_card_frames.append(frame)
             return
         assert player_index is not None
-        self.add_player_card(player_index, 0)
+        self.add_player_card(player_index, 0, highlight=True)
 
-    def add_player_card(self, player_index: int, hand_index: int) -> None:
+    def add_player_card(self, player_index: int, hand_index: int, highlight: bool = False) -> None:
         hand = self.players[player_index].hands[hand_index]
         cards_frame = self.player_cards_frames[(player_index, hand_index)]
         card = hand.cards[-1]
         compactness = 850 if len(self.players[player_index].hands) > 1 else 650
         available_width = max(100, self.root.winfo_width() // max(1, min(5, len(self.players))) - 30)
-        card_factor = max(6, ceil(compactness * len(hand.cards) / available_width))
-        card_frame = tk.Frame(cards_frame, bg="#0b542d", highlightthickness=2, highlightbackground="#f8d66d")
+        card_factor = max(6, ceil(compactness * max(4, len(hand.cards)) / available_width))
+        card_frame = tk.Frame(
+            cards_frame,
+            bg="#0b542d",
+            highlightthickness=2 if highlight else 0,
+            highlightbackground="#f8d66d",
+        )
         tk.Label(card_frame, image=self.card_image(card, card_factor), bg="#0b542d").pack()
-        tk.Label(card_frame, text=self.card_value_text(card), bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
-        card_frame.pack(side="left", padx=2)
+        value_label = tk.Label(cards_frame, text=self.card_value_text(card), bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 9, "bold"))
+        self.position_player_card(cards_frame, card_frame, value_label, len(hand.cards) - 1)
         self.deal_card_frames[(player_index, hand_index, len(hand.cards) - 1)] = card_frame
+
+    def position_player_card(
+        self,
+        cards_frame: tk.Frame,
+        card_frame: tk.Frame,
+        value_label: tk.Label,
+        card_index: int,
+    ) -> None:
+        card_frame.update_idletasks()
+        overlap_step = 28
+        cards_frame.pack_propagate(False)
+        card_width = card_frame.winfo_reqwidth()
+        card_height = card_frame.winfo_reqheight()
+        first_gap = 4
+        if card_index == 0:
+            x_position = 0
+        elif card_index == 1:
+            x_position = card_width + first_gap
+        else:
+            x_position = card_width + first_gap + overlap_step * (card_index - 1)
+        cards_frame.configure(
+            width=card_width * 2 + first_gap + overlap_step * max(0, card_index - 1),
+            height=card_height + 20,
+        )
+        card_frame.place(x=x_position, y=0)
+        value_label.place(x=x_position + card_width // 2, y=card_height + 1, anchor="n")
 
     def collect_bets(self) -> bool:
         dialog = tk.Toplevel(self.root)
@@ -466,16 +498,16 @@ class BlackjackApp:
     def hit(self) -> None:
         if self.dealing or self.round_over or self.current_player >= len(self.players):
             return
-        hand = self.players[self.current_player].active_hand()
+        player_index = self.current_player
+        hand_index = self.players[player_index].current_hand
+        hand = self.players[player_index].active_hand()
         hand.cards.append(self.deck.pop())
+        self.add_player_card(player_index, hand_index)
+        self.update_hand_info(player_index, hand_index)
         if hand.is_bust() or hand.value()[0] == 21:
             hand.stood = True
-            self.players[self.current_player].current_hand += 1
+            self.players[player_index].current_hand += 1
             self.advance_automatic_players()
-            if not self.round_over:
-                self.render(hide_dealer=True)
-        else:
-            self.render(hide_dealer=True)
 
     def double_down(self) -> None:
         if self.dealing or self.round_over or self.current_player >= len(self.players) or not self.can_double():
@@ -710,8 +742,8 @@ class BlackjackApp:
                 cards.pack(anchor="e")
                 self.player_cards_frames[(index, hand_index)] = cards
                 compactness = 850 if len(player.hands) > 1 else 650
-                card_factor = max(6, ceil(compactness * len(hand.cards) / available_width))
-                for card in hand.cards:
+                card_factor = max(6, ceil(compactness * max(4, len(hand.cards)) / available_width))
+                for card_index, card in enumerate(hand.cards):
                     is_effect_card = (
                         self.deal_effect == ("player", index)
                         and hand_index == 0
@@ -723,9 +755,9 @@ class BlackjackApp:
                         highlightthickness=2 if is_effect_card else 0,
                         highlightbackground="#f8d66d",
                     )
-                    card_frame.pack(side="left", padx=2)
                     tk.Label(card_frame, image=self.card_image(card, card_factor), bg=background).pack()
-                    tk.Label(card_frame, text=self.card_value_text(card), bg=background, fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
+                    value_label = tk.Label(cards, text=self.card_value_text(card), bg=background, fg="#f8d66d", font=("Segoe UI", 9, "bold"))
+                    self.position_player_card(cards, card_frame, value_label, card_index)
                 hand_data = tk.Frame(info_frame, bg="#104a2d")
                 hand_data.pack(anchor="nw", pady=(8 if hand_index == 0 else 5, 0))
                 hand_label = tk.Label(hand_data, text=label if show_hand_values else "", bg="#104a2d", fg="#f8d66d", font=("Segoe UI", 9, "bold"), justify="left")
