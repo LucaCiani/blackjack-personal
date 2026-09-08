@@ -162,8 +162,6 @@ class BlackjackApp:
         self.dealer_frame.grid(row=0, column=0, sticky="ew", padx=18, pady=8)
         dealer_toolbar = tk.Frame(self.dealer_frame, bg="#0b542d")
         dealer_toolbar.pack(fill="x", padx=8, pady=(2, 0))
-        self.status = tk.Label(dealer_toolbar, text="", bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 12, "bold"))
-        self.status.pack(side="left", expand=True, fill="x")
         tk.Button(dealer_toolbar, text="Nuova partita", command=self.show_setup).pack(side="right")
         self.dealer_cards = tk.Frame(self.dealer_frame, bg="#0b542d")
         self.dealer_cards.pack(pady=8)
@@ -190,7 +188,6 @@ class BlackjackApp:
     def new_round(self) -> None:
         self.players = [player for player in self.players if player.credits > 0]
         if not self.players:
-            self.set_status("Nessun giocatore ha più crediti. Inizia una nuova partita.")
             self.hit_button.config(state="disabled")
             self.stand_button.config(state="disabled")
             self.double_button.config(state="disabled")
@@ -290,7 +287,6 @@ class BlackjackApp:
             while player.current_hand < len(player.hands):
                 hand = player.active_hand()
                 if player.hand_bets[player.current_hand] and not hand.stood and not hand.is_bust() and not hand.is_blackjack() and hand.value()[0] != 21:
-                    self.set_status(f"Turno di {player.name}" + (f" (mano {player.current_hand + 1})" if len(player.hands) > 1 else "") + ": scegli Carta, Stai, Raddoppia o Dividi.")
                     self.update_action_buttons()
                     return
                 player.current_hand += 1
@@ -359,7 +355,6 @@ class BlackjackApp:
             self.render(hide_dealer=True)
 
     def dealer_turn(self) -> None:
-        self.set_status("Il dealer sta giocando...")
         self.root.update_idletasks()
         while self.dealer.value()[0] < 17:
             self.dealer.cards.append(self.deck.pop())
@@ -369,9 +364,8 @@ class BlackjackApp:
         self.double_button.config(state="disabled")
         self.split_button.config(state="disabled")
         self.next_button.config(state="normal")
-        result = self.results_text()
+        self.results_text()
         self.render(hide_dealer=False)
-        self.set_status(result)
 
     def results_text(self) -> str:
         dealer_value = self.dealer.value()[0]
@@ -398,11 +392,11 @@ class BlackjackApp:
                 else:
                     result = "perde"
                 if result == "BLACKJACK!":
-                    player.credits += bet * 2.5
+                    player.credits += ceil(bet * 2.5)
                 elif result in {"vince", "vince (dealer sballato)"}:
-                    player.credits += bet * 2
+                    player.credits += ceil(bet * 2)
                 elif result == "pareggio":
-                    player.credits += bet
+                    player.credits += ceil(bet)
                 hand_results.append(result)
             player.credit_change = player.credits - credits_before_result
             player.round_result = " / ".join(hand_results)
@@ -439,9 +433,6 @@ class BlackjackApp:
         self.stand_button.config(state="normal")
         self.double_button.config(state="normal" if self.can_double() else "disabled")
         self.split_button.config(state="normal" if self.can_split() else "disabled")
-
-    def set_status(self, text: str) -> None:
-        self.status.config(text=text)
 
     def card_image(self, card: Card, factor: int) -> tk.PhotoImage:
         cache_key = f"{card.filename}:{factor}"
