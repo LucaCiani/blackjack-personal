@@ -521,16 +521,32 @@ class BlackjackApp:
             columns = min(5, len(self.players))
             box.grid(row=index // columns, column=index % columns, sticky="nsew", padx=5, pady=4)
             available_width = max(100, self.root.winfo_width() // max(1, columns) - 30)
+            box.columnconfigure(0, weight=1)
+            box.columnconfigure(1, weight=2)
+            box.rowconfigure(0, weight=1)
+            info_frame = tk.Frame(box, bg=background)
+            info_frame.grid(row=0, column=0, sticky="nsew", padx=(5, 2), pady=6)
+            tk.Label(
+                info_frame,
+                text=f"Crediti: {player.credits:g}\nPuntata totale: {player.bet}",
+                bg=background,
+                fg="white",
+                justify="left",
+                anchor="nw",
+                font=("Segoe UI", 9, "bold"),
+            ).pack(anchor="nw")
+            hands_frame = tk.Frame(box, bg=background)
+            hands_frame.grid(row=0, column=1, sticky="ne", padx=(2, 5), pady=4)
             for hand_index, hand in enumerate(player.hands):
-                hand_frame = tk.Frame(box, bg=background)
-                hand_frame.pack(pady=(6, 0))
+                hand_frame = tk.Frame(hands_frame, bg=background)
+                hand_frame.pack(anchor="e", pady=(2, 5))
                 label = f"Mano {hand_index + 1}" if len(player.hands) > 1 else ""
                 if hand_index == player.current_hand and active:
                     label += "  <- attiva"
-                if label:
-                    tk.Label(hand_frame, text=label, bg=background, fg="#f8d66d", font=("Segoe UI", 10, "bold")).pack(pady=(2, 1))
+                value = "sballato" if hand.is_bust() else str(hand.value()[0])
+                suffix = "  (BLACKJACK)" if hand.is_blackjack() else ""
                 cards = tk.Frame(hand_frame, bg=background)
-                cards.pack()
+                cards.pack(anchor="e")
                 compactness = 850 if len(player.hands) > 1 else 650
                 card_factor = max(6, ceil(compactness * len(hand.cards) / available_width))
                 for card in hand.cards:
@@ -538,19 +554,24 @@ class BlackjackApp:
                     card_frame.pack(side="left", padx=2)
                     tk.Label(card_frame, image=self.card_image(card, card_factor), bg=background).pack()
                     tk.Label(card_frame, text=self.card_value_text(card), bg=background, fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
-                value = "sballato" if hand.is_bust() else str(hand.value()[0])
-                suffix = "  (BLACKJACK)" if hand.is_blackjack() else ""
-                hand_data = tk.Frame(hand_frame, bg="#104a2d")
-                hand_data.pack(pady=(1, 4))
-                tk.Label(hand_data, text=f"Valore: {value}{suffix}", bg="#104a2d", fg="white", font=("Segoe UI", 9, "bold")).pack(side="left", padx=3)
-                tk.Label(hand_data, text=f"Puntata: {player.hand_bets[hand_index]}", bg="#104a2d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack(side="left", padx=3)
+                hand_data = tk.Frame(info_frame, bg="#104a2d")
+                hand_data.pack(anchor="nw", pady=(8 if hand_index == 0 else 5, 0))
+                if label:
+                    tk.Label(hand_data, text=label, bg="#104a2d", fg="#f8d66d", font=("Segoe UI", 9, "bold"), justify="left").pack(anchor="w")
+                tk.Label(hand_data, text=f"Valore: {value}{suffix}", bg="#104a2d", fg="white", font=("Segoe UI", 8, "bold"), justify="left").pack(anchor="w")
+                tk.Label(hand_data, text=f"Puntata: {player.hand_bets[hand_index]}", bg="#104a2d", fg="#f8d66d", font=("Segoe UI", 8, "bold")).pack(anchor="w")
             if self.round_over and player.round_result:
                 result_color = "#7dff9b" if "vince" in player.round_result else "#ff8585" if "perde" in player.round_result or "sballato" in player.round_result else "#f8d66d"
-                tk.Label(box, text=f"Esito: {player.round_result} ({player.credit_change:+g} crediti)", bg=background, fg=result_color, font=("Segoe UI", 9, "bold"), wraplength=available_width).pack(pady=(0, 2))
-            account_data = tk.Frame(box, bg=background)
-            account_data.pack(pady=(1, 8))
-            tk.Label(account_data, text=f"Crediti: {player.credits:g}", bg=background, fg="white", font=("Segoe UI", 9, "bold")).pack(side="left", padx=3)
-            tk.Label(account_data, text=f"Puntata totale: {player.bet}", bg=background, fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack(side="left", padx=3)
+                tk.Label(
+                    info_frame,
+                    text=f"Esito: {player.round_result} ({player.credit_change:+g} crediti)",
+                    bg=background,
+                    fg=result_color,
+                    font=("Segoe UI", 8, "bold"),
+                    wraplength=max(90, available_width // 2),
+                    justify="left",
+                    anchor="sw",
+                ).pack(side="bottom", anchor="sw")
         self.update_action_buttons()
 
 
