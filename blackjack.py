@@ -441,6 +441,11 @@ class BlackjackApp:
             self.images[cache_key] = image.subsample(factor, factor)
         return self.images[cache_key]
 
+    def card_value_text(self, card: Card) -> str:
+        if card.rank == "ace":
+            return "1/11"
+        return str(CARD_VALUES[card.rank])
+
     def render(self, hide_dealer: bool) -> None:
         for widget in self.dealer_cards.winfo_children():
             widget.destroy()
@@ -450,7 +455,9 @@ class BlackjackApp:
                 label.pack_propagate(False)
                 tk.Label(label, text="?", bg="#173c2b", fg="#f8d66d", font=("Segoe UI", 22, "bold")).place(relx=0.5, rely=0.5, anchor="center")
             else:
-                label = tk.Label(self.dealer_cards, image=self.card_image(card, 5), bg="#0b542d")
+                label = tk.Frame(self.dealer_cards, bg="#0b542d")
+                tk.Label(label, image=self.card_image(card, 5), bg="#0b542d").pack()
+                tk.Label(label, text=self.card_value_text(card), bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
             label.pack(side="left", padx=4)
         shown_value = "?" if hide_dealer else ("sballato" if self.dealer.is_bust() else str(self.dealer.value()[0]))
         self.dealer_value_label.config(text=f"Valore: {shown_value}")
@@ -476,20 +483,23 @@ class BlackjackApp:
                 compactness = 850 if len(player.hands) > 1 else 650
                 card_factor = max(6, ceil(compactness * len(hand.cards) / available_width))
                 for card in hand.cards:
-                    tk.Label(cards, image=self.card_image(card, card_factor), bg=background).pack(side="left", padx=2)
+                    card_frame = tk.Frame(cards, bg=background)
+                    card_frame.pack(side="left", padx=2)
+                    tk.Label(card_frame, image=self.card_image(card, card_factor), bg=background).pack()
+                    tk.Label(card_frame, text=self.card_value_text(card), bg=background, fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
                 value = "sballato" if hand.is_bust() else str(hand.value()[0])
                 suffix = "  (BLACKJACK)" if hand.is_blackjack() else ""
-                tk.Label(
-                    hand_frame,
-                    text=f"Valore: {value}{suffix}  |  Puntata: {player.hand_bets[hand_index]}",
-                    bg=background,
-                    fg="white",
-                    font=("Segoe UI", 10, "bold"),
-                ).pack(pady=(1, 4))
-            change = ""
+                hand_data = tk.Frame(hand_frame, bg="#104a2d")
+                hand_data.pack(pady=(1, 4))
+                tk.Label(hand_data, text=f"Valore: {value}{suffix}", bg="#104a2d", fg="white", font=("Segoe UI", 9, "bold")).pack(side="left", padx=3)
+                tk.Label(hand_data, text=f"Puntata: {player.hand_bets[hand_index]}", bg="#104a2d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack(side="left", padx=3)
             if self.round_over and player.round_result:
-                change = f"\nEsito: {player.round_result} ({player.credit_change:+g} crediti)"
-            tk.Label(box, text=f"Crediti: {player.credits:g}  |  Puntata totale: {player.bet}{change}", bg=background, fg="white", font=("Segoe UI", 10, "bold"), wraplength=available_width).pack(pady=(4, 8))
+                result_color = "#7dff9b" if "vince" in player.round_result else "#ff8585" if "perde" in player.round_result or "sballato" in player.round_result else "#f8d66d"
+                tk.Label(box, text=f"Esito: {player.round_result} ({player.credit_change:+g} crediti)", bg=background, fg=result_color, font=("Segoe UI", 9, "bold"), wraplength=available_width).pack(pady=(0, 2))
+            account_data = tk.Frame(box, bg=background)
+            account_data.pack(pady=(1, 8))
+            tk.Label(account_data, text=f"Crediti: {player.credits:g}", bg=background, fg="white", font=("Segoe UI", 9, "bold")).pack(side="left", padx=3)
+            tk.Label(account_data, text=f"Puntata totale: {player.bet}", bg=background, fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack(side="left", padx=3)
         self.update_action_buttons()
 
 
