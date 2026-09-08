@@ -29,6 +29,7 @@ class Card:
 class Hand:
     cards: list[Card] = field(default_factory=list)
     stood: bool = False
+    natural_eligible: bool = True
 
     def value(self) -> tuple[int, bool]:
         total = sum(CARD_VALUES[card.rank] for card in self.cards)
@@ -39,7 +40,7 @@ class Hand:
         return total, aces > 0
 
     def is_blackjack(self) -> bool:
-        return len(self.cards) == 2 and self.value()[0] == 21
+        return self.natural_eligible and len(self.cards) == 2 and self.value()[0] == 21
 
     def is_bust(self) -> bool:
         return self.value()[0] > 21
@@ -53,6 +54,12 @@ class Player:
     bet: int = 0
     round_result: str = ""
     credit_change: float = 0
+    hands: list[Hand] = field(default_factory=list)
+    hand_bets: list[int] = field(default_factory=list)
+    current_hand: int = 0
+
+    def active_hand(self) -> Hand:
+        return self.hands[self.current_hand]
 
 
 class BlackjackApp:
@@ -96,7 +103,8 @@ class BlackjackApp:
         self.setup.bind("<Return>", lambda _event: self.start_game())
         self.setup.update_idletasks()
         width = self.setup.winfo_width()
-        height = self.setup.winfo_height()
+        height = self.setup.winfo_reqheight() + 24
+        self.setup.minsize(width, height)
         screen_width = self.setup.winfo_screenwidth()
         screen_height = self.setup.winfo_screenheight()
         x = max(0, (screen_width - width) // 2)
@@ -120,6 +128,15 @@ class BlackjackApp:
             self.name_vars.append(var)
             ttk.Label(self.name_frame, text=f"Nome giocatore {index + 1}:").grid(row=index, column=0, sticky="w", pady=3)
             ttk.Entry(self.name_frame, textvariable=var, width=24).grid(row=index, column=1, padx=(10, 0), pady=3)
+        if hasattr(self, "credits_var"):
+            self.setup.update_idletasks()
+            width = max(self.setup.winfo_width(), self.setup.winfo_reqwidth())
+            height = self.setup.winfo_reqheight() + 24
+            screen_width = self.setup.winfo_screenwidth()
+            screen_height = self.setup.winfo_screenheight()
+            x = max(0, (screen_width - width) // 2)
+            y = max(0, (screen_height - height) // 2)
+            self.setup.geometry(f"{width}x{height}+{x}+{y}")
 
     def start_game(self) -> None:
         names = [var.get().strip() or f"Giocatore {index + 1}" for index, var in enumerate(self.name_vars)]
@@ -141,31 +158,34 @@ class BlackjackApp:
         self.root.after_idle(self.new_round)
 
     def build_table(self) -> None:
-        header = tk.Frame(self.root, bg="#083b22")
-        header.grid(row=0, column=0, sticky="ew")
-        tk.Label(header, text="BLACKJACK", bg="#083b22", fg="#f8d66d", font=("Segoe UI", 24, "bold")).pack(side="left", padx=18, pady=10)
-        tk.Button(header, text="Nuova partita", command=self.show_setup).pack(side="right", padx=18)
-        self.status = tk.Label(self.root, text="", bg="#f8d66d", fg="#173c2b", font=("Segoe UI", 14, "bold"), pady=10)
-        self.status.grid(row=1, column=0, sticky="ew", padx=14, pady=(8, 2))
         self.dealer_frame = tk.LabelFrame(self.root, text="Dealer", bg="#0b542d", fg="white", font=("Segoe UI", 12, "bold"))
-        self.dealer_frame.grid(row=2, column=0, sticky="ew", padx=18, pady=8)
+        self.dealer_frame.grid(row=0, column=0, sticky="ew", padx=18, pady=8)
+        dealer_toolbar = tk.Frame(self.dealer_frame, bg="#0b542d")
+        dealer_toolbar.pack(fill="x", padx=8, pady=(2, 0))
+        self.status = tk.Label(dealer_toolbar, text="", bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 12, "bold"))
+        self.status.pack(side="left", expand=True, fill="x")
+        tk.Button(dealer_toolbar, text="Nuova partita", command=self.show_setup).pack(side="right")
         self.dealer_cards = tk.Frame(self.dealer_frame, bg="#0b542d")
         self.dealer_cards.pack(pady=8)
         self.dealer_value_label = tk.Label(self.dealer_frame, text="", bg="#0b542d", fg="white", font=("Segoe UI", 10, "bold"))
         self.dealer_value_label.pack()
         self.players_frame = tk.Frame(self.root, bg="#0b542d")
-        self.players_frame.grid(row=3, column=0, sticky="nsew", padx=18)
+        self.players_frame.grid(row=1, column=0, sticky="nsew", padx=18)
         self.controls = tk.Frame(self.root, bg="#083b22")
-        self.controls.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        self.controls.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         button_style = {"font": ("Segoe UI", 12, "bold"), "fg": "white", "activeforeground": "white"}
         self.hit_button = tk.Button(self.controls, text="CARTA", width=12, bg="#178447", activebackground="#20a45b", command=self.hit, **button_style)
         self.hit_button.pack(side="left", padx=(18, 6), pady=12)
         self.stand_button = tk.Button(self.controls, text="STAI", width=12, bg="#b56b13", activebackground="#d48a25", command=self.stand, **button_style)
         self.stand_button.pack(side="left", padx=6, pady=12)
+        self.double_button = tk.Button(self.controls, text="RADDOPPIA", width=12, bg="#7b4bb7", activebackground="#9866d2", command=self.double_down, **button_style)
+        self.double_button.pack(side="left", padx=6, pady=12)
+        self.split_button = tk.Button(self.controls, text="DIVIDI", width=12, bg="#c04a78", activebackground="#dc668f", command=self.split_hand, **button_style)
+        self.split_button.pack(side="left", padx=6, pady=12)
         self.next_button = tk.Button(self.controls, text="NUOVO GIRO", width=15, bg="#1769aa", activebackground="#2d8fd5", command=self.new_round, state="disabled", **button_style)
         self.next_button.pack(side="right", padx=18, pady=12)
         self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(3, weight=1)
+        self.root.rowconfigure(1, weight=1)
 
     def new_round(self) -> None:
         self.players = [player for player in self.players if player.credits > 0]
@@ -173,6 +193,8 @@ class BlackjackApp:
             self.set_status("Nessun giocatore ha più crediti. Inizia una nuova partita.")
             self.hit_button.config(state="disabled")
             self.stand_button.config(state="disabled")
+            self.double_button.config(state="disabled")
+            self.split_button.config(state="disabled")
             self.next_button.config(state="disabled")
             return
         if not self.collect_bets():
@@ -181,17 +203,22 @@ class BlackjackApp:
         random.shuffle(self.deck)
         self.dealer = Hand()
         for player in self.players:
-            player.hand = Hand()
+            player.hands = [Hand()]
+            player.hand = player.hands[0]
+            player.hand_bets = [player.bet]
+            player.current_hand = 0
             player.round_result = ""
             player.credit_change = 0
         for _ in range(2):
             for player in self.players:
-                player.hand.cards.append(self.deck.pop())
+                player.hands[0].cards.append(self.deck.pop())
             self.dealer.cards.append(self.deck.pop())
         self.current_player = 0
         self.round_over = False
         self.hit_button.config(state="normal")
         self.stand_button.config(state="normal")
+        self.double_button.config(state="normal")
+        self.split_button.config(state="normal")
         self.next_button.config(state="disabled")
         self.advance_automatic_players()
         if not self.round_over:
@@ -258,35 +285,75 @@ class BlackjackApp:
         return confirmed
 
     def advance_automatic_players(self) -> None:
-        while self.current_player < len(self.players) and (
-            self.players[self.current_player].bet == 0
-            or self.players[self.current_player].hand.is_blackjack()
-        ):
+        while self.current_player < len(self.players):
+            player = self.players[self.current_player]
+            while player.current_hand < len(player.hands):
+                hand = player.active_hand()
+                if player.hand_bets[player.current_hand] and not hand.stood and not hand.is_bust() and not hand.is_blackjack() and hand.value()[0] != 21:
+                    self.set_status(f"Turno di {player.name}" + (f" (mano {player.current_hand + 1})" if len(player.hands) > 1 else "") + ": scegli Carta, Stai, Raddoppia o Dividi.")
+                    self.update_action_buttons()
+                    return
+                player.current_hand += 1
             self.current_player += 1
         if self.current_player >= len(self.players):
             self.dealer_turn()
-        else:
-            self.set_status(f"Turno di {self.players[self.current_player].name}: scegli Carta o Stai.")
 
     def hit(self) -> None:
         if self.round_over or self.current_player >= len(self.players):
             return
-        hand = self.players[self.current_player].hand
+        hand = self.players[self.current_player].active_hand()
         hand.cards.append(self.deck.pop())
         if hand.is_bust() or hand.value()[0] == 21:
             hand.stood = True
-            self.current_player += 1
+            self.players[self.current_player].current_hand += 1
             self.advance_automatic_players()
             if not self.round_over:
                 self.render(hide_dealer=True)
         else:
             self.render(hide_dealer=True)
 
+    def double_down(self) -> None:
+        if self.round_over or self.current_player >= len(self.players) or not self.can_double():
+            return
+        player = self.players[self.current_player]
+        hand = player.active_hand()
+        bet = player.hand_bets[player.current_hand]
+        player.credits -= bet
+        player.hand_bets[player.current_hand] *= 2
+        player.bet += bet
+        hand.cards.append(self.deck.pop())
+        hand.stood = True
+        self.advance_automatic_players()
+        if not self.round_over:
+            self.render(hide_dealer=True)
+
+    def split_hand(self) -> None:
+        if self.round_over or self.current_player >= len(self.players) or not self.can_split():
+            return
+        player = self.players[self.current_player]
+        hand = player.active_hand()
+        bet = player.hand_bets[player.current_hand]
+        player.credits -= bet
+        first, second = hand.cards
+        first_hand = Hand(cards=[first], natural_eligible=False)
+        second_hand = Hand(cards=[second], natural_eligible=False)
+        player.hands[player.current_hand:player.current_hand + 1] = [first_hand, second_hand]
+        player.hand_bets[player.current_hand:player.current_hand + 1] = [bet, bet]
+        player.bet += bet
+        first_hand.cards.append(self.deck.pop())
+        second_hand.cards.append(self.deck.pop())
+        if first.rank == "ace":
+            first_hand.stood = True
+            second_hand.stood = True
+        self.advance_automatic_players()
+        if not self.round_over:
+            self.render(hide_dealer=True)
+
     def stand(self) -> None:
         if self.round_over or self.current_player >= len(self.players):
             return
-        self.players[self.current_player].hand.stood = True
-        self.current_player += 1
+        self.players[self.current_player].active_hand().stood = True
+        self.players[self.current_player].current_hand += 1
         self.advance_automatic_players()
         if not self.round_over:
             self.render(hide_dealer=True)
@@ -299,6 +366,8 @@ class BlackjackApp:
         self.round_over = True
         self.hit_button.config(state="disabled")
         self.stand_button.config(state="disabled")
+        self.double_button.config(state="disabled")
+        self.split_button.config(state="disabled")
         self.next_button.config(state="normal")
         result = self.results_text()
         self.render(hide_dealer=False)
@@ -308,35 +377,68 @@ class BlackjackApp:
         dealer_value = self.dealer.value()[0]
         results = []
         for player in self.players:
-            credits_before_result = player.credits + player.bet
-            value = player.hand.value()[0]
-            if player.bet == 0:
-                result = "salta"
-            elif player.hand.is_bust():
-                result = "sballato"
-            elif self.dealer.is_blackjack():
-                result = "pareggio" if player.hand.is_blackjack() else "perde"
-            elif player.hand.is_blackjack() and not self.dealer.is_blackjack():
-                result = "BLACKJACK!"
-            elif self.dealer.is_bust():
-                result = "vince (dealer sballato)"
-            elif value > dealer_value:
-                result = "vince"
-            elif value == dealer_value:
-                result = "pareggio"
-            else:
-                result = "perde"
-            if player.bet:
+            credits_before_result = player.credits + sum(player.hand_bets)
+            hand_results = []
+            for hand, bet in zip(player.hands, player.hand_bets):
+                value = hand.value()[0]
+                if bet == 0:
+                    result = "salta"
+                elif hand.is_bust():
+                    result = "sballato"
+                elif self.dealer.is_blackjack():
+                    result = "pareggio" if hand.is_blackjack() else "perde"
+                elif hand.is_blackjack() and not self.dealer.is_blackjack():
+                    result = "BLACKJACK!"
+                elif self.dealer.is_bust():
+                    result = "vince (dealer sballato)"
+                elif value > dealer_value:
+                    result = "vince"
+                elif value == dealer_value:
+                    result = "pareggio"
+                else:
+                    result = "perde"
                 if result == "BLACKJACK!":
-                    player.credits += player.bet * 2.5
+                    player.credits += bet * 2.5
                 elif result in {"vince", "vince (dealer sballato)"}:
-                    player.credits += player.bet * 2
+                    player.credits += bet * 2
                 elif result == "pareggio":
-                    player.credits += player.bet
+                    player.credits += bet
+                hand_results.append(result)
             player.credit_change = player.credits - credits_before_result
-            player.round_result = result
-            results.append(f"{player.name}: {result}")
+            player.round_result = " / ".join(hand_results)
+            results.append(f"{player.name}: {player.round_result}")
         return f"Dealer: {dealer_value if not self.dealer.is_bust() else 'sballato'}  |  " + "  •  ".join(results)
+
+    def can_double(self) -> bool:
+        if self.round_over or self.current_player >= len(self.players):
+            return False
+        player = self.players[self.current_player]
+        hand = player.active_hand()
+        return len(hand.cards) == 2 and player.credits >= player.hand_bets[player.current_hand]
+
+    def can_split(self) -> bool:
+        if self.round_over or self.current_player >= len(self.players):
+            return False
+        player = self.players[self.current_player]
+        hand = player.active_hand()
+        return (
+            len(player.hands) < 2
+            and len(hand.cards) == 2
+            and hand.cards[0].rank == hand.cards[1].rank
+            and player.credits >= player.hand_bets[player.current_hand]
+        )
+
+    def update_action_buttons(self) -> None:
+        if self.round_over or self.current_player >= len(self.players):
+            self.hit_button.config(state="disabled")
+            self.stand_button.config(state="disabled")
+            self.double_button.config(state="disabled")
+            self.split_button.config(state="disabled")
+            return
+        self.hit_button.config(state="normal")
+        self.stand_button.config(state="normal")
+        self.double_button.config(state="normal" if self.can_double() else "disabled")
+        self.split_button.config(state="normal" if self.can_split() else "disabled")
 
     def set_status(self, text: str) -> None:
         self.status.config(text=text)
@@ -369,18 +471,35 @@ class BlackjackApp:
             title = f"  TURNO DI {player.name.upper()}  " if active else f"  {player.name}  "
             box = tk.LabelFrame(self.players_frame, text=title, bg=background, fg="#f8d66d", bd=3 if active else 1, relief="solid" if active else "groove", font=("Segoe UI", 12, "bold"))
             box.pack(side="left", fill="both", expand=True, padx=5, pady=4)
-            cards = tk.Frame(box, bg=background)
-            cards.pack(pady=6)
             available_width = max(120, self.root.winfo_width() // max(1, len(self.players)) - 30)
-            card_factor = max(5, ceil(500 * len(player.hand.cards) / available_width))
-            for card in player.hand.cards:
-                tk.Label(cards, image=self.card_image(card, card_factor), bg=background).pack(side="left", padx=2)
-            value = "sballato" if player.hand.is_bust() else str(player.hand.value()[0])
-            suffix = "  (BLACKJACK)" if player.hand.is_blackjack() else ""
+            for hand_index, hand in enumerate(player.hands):
+                hand_frame = tk.Frame(box, bg=background)
+                hand_frame.pack(pady=(6, 0))
+                label = f"Mano {hand_index + 1}" if len(player.hands) > 1 else ""
+                if hand_index == player.current_hand and active:
+                    label += "  <- attiva"
+                if label:
+                    tk.Label(hand_frame, text=label, bg=background, fg="#f8d66d", font=("Segoe UI", 10, "bold")).pack(pady=(2, 1))
+                cards = tk.Frame(hand_frame, bg=background)
+                cards.pack()
+                compactness = 850 if len(player.hands) > 1 else 650
+                card_factor = max(6, ceil(compactness * len(hand.cards) / available_width))
+                for card in hand.cards:
+                    tk.Label(cards, image=self.card_image(card, card_factor), bg=background).pack(side="left", padx=2)
+                value = "sballato" if hand.is_bust() else str(hand.value()[0])
+                suffix = "  (BLACKJACK)" if hand.is_blackjack() else ""
+                tk.Label(
+                    hand_frame,
+                    text=f"Valore: {value}{suffix}  |  Puntata: {player.hand_bets[hand_index]}",
+                    bg=background,
+                    fg="white",
+                    font=("Segoe UI", 10, "bold"),
+                ).pack(pady=(1, 4))
             change = ""
             if self.round_over and player.round_result:
                 change = f"\nEsito: {player.round_result} ({player.credit_change:+g} crediti)"
-            tk.Label(box, text=f"Crediti: {player.credits:g}  |  Puntata: {player.bet}\nValore: {value}{suffix}{change}", bg=background, fg="white", font=("Segoe UI", 10, "bold")).pack(pady=(0, 6))
+            tk.Label(box, text=f"Crediti: {player.credits:g}  |  Puntata totale: {player.bet}{change}", bg=background, fg="white", font=("Segoe UI", 10, "bold"), wraplength=available_width).pack(pady=(4, 8))
+        self.update_action_buttons()
 
 
 if __name__ == "__main__":
