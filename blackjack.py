@@ -172,18 +172,37 @@ class BlackjackApp:
         self.controls = tk.Frame(self.root, bg="#083b22")
         self.controls.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         button_style = {"font": ("Segoe UI", 12, "bold"), "fg": "white", "activeforeground": "white"}
-        self.hit_button = tk.Button(self.controls, text="CARTA", width=12, bg="#178447", activebackground="#20a45b", command=self.hit, **button_style)
+        self.hit_button = tk.Button(self.controls, text="CARTA (C)", width=12, bg="#178447", activebackground="#20a45b", command=self.hit, **button_style)
         self.hit_button.pack(side="left", padx=(18, 6), pady=12)
-        self.stand_button = tk.Button(self.controls, text="STAI", width=12, bg="#b56b13", activebackground="#d48a25", command=self.stand, **button_style)
+        self.stand_button = tk.Button(self.controls, text="STAI (S)", width=12, bg="#b56b13", activebackground="#d48a25", command=self.stand, **button_style)
         self.stand_button.pack(side="left", padx=6, pady=12)
-        self.double_button = tk.Button(self.controls, text="RADDOPPIA", width=12, bg="#7b4bb7", activebackground="#9866d2", command=self.double_down, **button_style)
+        self.double_button = tk.Button(self.controls, text="RADDOPPIA (R)", width=12, bg="#7b4bb7", activebackground="#9866d2", command=self.double_down, **button_style)
         self.double_button.pack(side="left", padx=6, pady=12)
-        self.split_button = tk.Button(self.controls, text="DIVIDI", width=12, bg="#c04a78", activebackground="#dc668f", command=self.split_hand, **button_style)
+        self.split_button = tk.Button(self.controls, text="DIVIDI (D)", width=12, bg="#c04a78", activebackground="#dc668f", command=self.split_hand, **button_style)
         self.split_button.pack(side="left", padx=6, pady=12)
-        self.next_button = tk.Button(self.controls, text="NUOVO GIRO", width=15, bg="#1769aa", activebackground="#2d8fd5", command=self.new_round, state="disabled", **button_style)
+        self.next_button = tk.Button(self.controls, text="NUOVO GIRO (N)", width=15, bg="#1769aa", activebackground="#2d8fd5", command=self.new_round, state="disabled", **button_style)
         self.next_button.pack(side="right", padx=18, pady=12)
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(1, weight=1)
+        self.root.bind_all("<KeyPress>", self.handle_key)
+
+    def handle_key(self, event: tk.Event) -> str | None:
+        if event.widget.winfo_toplevel() is not self.root:
+            return None
+        key = event.char.lower()
+        actions = {
+            "c": self.hit,
+            "s": self.stand,
+            "r": self.double_down,
+            "d": self.split_hand,
+        }
+        if key in actions:
+            actions[key]()
+            return "break"
+        if key == "n" and self.round_over:
+            self.new_round()
+            return "break"
+        return None
 
     def new_round(self) -> None:
         self.players = [player for player in self.players if player.credits > 0]
@@ -232,12 +251,14 @@ class BlackjackApp:
         frame.grid()
         ttk.Label(frame, text="Puntate del nuovo giro", font=("Segoe UI", 16, "bold")).grid(columnspan=3, pady=(0, 12))
         bet_vars: list[tk.StringVar] = []
+        bet_entries: list[ttk.Entry] = []
         for index, player in enumerate(self.players):
             ttk.Label(frame, text=f"{player.name} - crediti: {player.credits}").grid(row=index + 1, column=0, sticky="w", pady=4)
             variable = tk.StringVar(value="1" if player.credits else "0")
             bet_vars.append(variable)
             entry = ttk.Entry(frame, textvariable=variable, width=10)
             entry.grid(row=index + 1, column=1, padx=12, pady=4)
+            bet_entries.append(entry)
             ttk.Label(frame, text="(0 = salta il giro)" if player.credits == 0 else "crediti").grid(row=index + 1, column=2, sticky="w")
         error = ttk.Label(frame, text="", foreground="#b00020")
         error.grid(row=len(self.players) + 1, columnspan=3, pady=(8, 0))
@@ -267,6 +288,16 @@ class BlackjackApp:
             dialog.destroy()
 
         ttk.Button(frame, text="Conferma puntate", command=confirm).grid(row=len(self.players) + 2, columnspan=3, pady=(14, 0))
+        def advance_bet(index: int, _event: tk.Event) -> str:
+            if index == len(bet_entries) - 1:
+                confirm()
+            else:
+                bet_entries[index + 1].focus_set()
+                bet_entries[index + 1].selection_range(0, tk.END)
+            return "break"
+
+        for index, entry in enumerate(bet_entries):
+            entry.bind("<Return>", lambda event, current=index: advance_bet(current, event))
         dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
         dialog.update_idletasks()
         width = dialog.winfo_width()
@@ -278,7 +309,11 @@ class BlackjackApp:
         dialog.geometry(f"{width}x{height}+{x}+{y}")
         dialog.lift()
         dialog.focus_force()
+        if bet_entries:
+            bet_entries[0].focus_set()
+            bet_entries[0].selection_range(0, tk.END)
         self.root.wait_window(dialog)
+        self.root.focus_force()
         return confirmed
 
     def advance_automatic_players(self) -> None:
