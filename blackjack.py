@@ -87,13 +87,23 @@ class BlackjackApp:
         frame = ttk.Frame(self.setup, padding=22)
         frame.grid()
         ttk.Label(frame, text="BLACKJACK", font=("Segoe UI", 22, "bold")).grid(columnspan=2, pady=(0, 14))
-        ttk.Label(frame, text="Numero di giocatori (1-5):").grid(row=1, column=0, sticky="w", pady=5)
+        ttk.Label(frame, text="Numero di giocatori (1-10):").grid(row=1, column=0, sticky="w", pady=5)
         self.count = tk.IntVar(value=1)
         self.count.trace_add("write", lambda *_args: self.update_names())
-        count_box = ttk.Spinbox(frame, from_=1, to=5, textvariable=self.count, width=5, command=self.update_names)
+        count_box = ttk.Spinbox(frame, from_=1, to=10, textvariable=self.count, width=5, command=self.update_names)
         count_box.grid(row=1, column=1, sticky="e", pady=5)
-        self.name_frame = ttk.Frame(frame)
-        self.name_frame.grid(row=2, columnspan=2, sticky="ew", pady=(8, 4))
+        names_container = ttk.Frame(frame)
+        names_container.grid(row=2, columnspan=2, sticky="ew", pady=(8, 4))
+        self.name_canvas = tk.Canvas(names_container, height=190, highlightthickness=0)
+        self.name_canvas.grid(row=0, column=0, sticky="ew")
+        names_scrollbar = ttk.Scrollbar(names_container, orient="vertical", command=self.name_canvas.yview)
+        names_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.name_canvas.configure(yscrollcommand=names_scrollbar.set)
+        self.name_frame = ttk.Frame(self.name_canvas)
+        self.name_window = self.name_canvas.create_window((0, 0), window=self.name_frame, anchor="nw")
+        self.name_frame.bind("<Configure>", lambda _event: self.name_canvas.configure(scrollregion=self.name_canvas.bbox("all")))
+        self.name_canvas.bind("<Configure>", lambda event: self.name_canvas.itemconfigure(self.name_window, width=event.width))
+        names_container.columnconfigure(0, weight=1)
         self.name_vars: list[tk.StringVar] = []
         self.update_names()
         ttk.Label(frame, text="Crediti iniziali per giocatore:").grid(row=3, column=0, sticky="w", pady=5)
@@ -118,7 +128,7 @@ class BlackjackApp:
         for child in self.name_frame.winfo_children():
             child.destroy()
         try:
-            amount = max(1, min(5, int(self.count.get())))
+            amount = max(1, min(10, int(self.count.get())))
         except (tk.TclError, ValueError):
             amount = 1
         old_values = [var.get() for var in self.name_vars]
@@ -128,6 +138,7 @@ class BlackjackApp:
             self.name_vars.append(var)
             ttk.Label(self.name_frame, text=f"Nome giocatore {index + 1}:").grid(row=index, column=0, sticky="w", pady=3)
             ttk.Entry(self.name_frame, textvariable=var, width=24).grid(row=index, column=1, padx=(10, 0), pady=3)
+        self.name_canvas.itemconfigure(self.name_window, width=self.name_canvas.winfo_width())
         if hasattr(self, "credits_var"):
             self.setup.update_idletasks()
             width = max(self.setup.winfo_width(), self.setup.winfo_reqwidth())
@@ -169,6 +180,10 @@ class BlackjackApp:
         self.dealer_value_label.pack()
         self.players_frame = tk.Frame(self.root, bg="#0b542d")
         self.players_frame.grid(row=1, column=0, sticky="nsew", padx=18)
+        for column in range(5):
+            self.players_frame.columnconfigure(column, weight=1)
+        self.players_frame.rowconfigure(0, weight=1)
+        self.players_frame.rowconfigure(1, weight=1)
         self.controls = tk.Frame(self.root, bg="#083b22")
         self.controls.grid(row=2, column=0, sticky="ew", pady=(8, 0))
         button_style = {"font": ("Segoe UI", 12, "bold"), "fg": "white", "activeforeground": "white"}
@@ -503,8 +518,9 @@ class BlackjackApp:
             background = "#145f38" if active else "#0b542d"
             title = f"  TURNO DI {player.name.upper()}  " if active else f"  {player.name}  "
             box = tk.LabelFrame(self.players_frame, text=title, bg=background, fg="#f8d66d", bd=3 if active else 1, relief="solid" if active else "groove", font=("Segoe UI", 12, "bold"))
-            box.pack(side="left", fill="both", expand=True, padx=5, pady=4)
-            available_width = max(120, self.root.winfo_width() // max(1, len(self.players)) - 30)
+            columns = min(5, len(self.players))
+            box.grid(row=index // columns, column=index % columns, sticky="nsew", padx=5, pady=4)
+            available_width = max(100, self.root.winfo_width() // max(1, columns) - 30)
             for hand_index, hand in enumerate(player.hands):
                 hand_frame = tk.Frame(box, bg=background)
                 hand_frame.pack(pady=(6, 0))
