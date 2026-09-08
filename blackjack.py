@@ -193,6 +193,8 @@ class BlackjackApp:
         self.new_game_button = tk.Button(dealer_toolbar, text="Nuova partita", command=self.show_setup)
         self.new_game_button.pack(side="right")
         self.dealer_cards = tk.Frame(self.dealer_frame, bg="#0b542d")
+        self.dealer_cards.configure(width=240, height=175)
+        self.dealer_cards.pack_propagate(False)
         self.dealer_cards.pack(pady=8)
         self.dealer_value_label = tk.Label(self.dealer_frame, text="", bg="#0b542d", fg="white", font=("Segoe UI", 10, "bold"))
         self.dealer_value_label.pack()
@@ -316,16 +318,19 @@ class BlackjackApp:
             is_hidden = len(self.dealer.cards) == 2
             frame = tk.Frame(
                 self.dealer_cards,
+                width=108,
+                height=165,
                 bg="#173c2b" if is_hidden else "#0b542d",
                 highlightthickness=2,
                 highlightbackground="#f8d66d",
             )
+            frame.grid_propagate(False)
             if is_hidden:
-                tk.Label(frame, text="?", bg="#173c2b", fg="#f8d66d", font=("Segoe UI", 22, "bold")).pack(padx=28, pady=45)
+                tk.Label(frame, text="?", bg="#173c2b", fg="#f8d66d", font=("Segoe UI", 22, "bold")).place(relx=0.5, rely=0.5, anchor="center")
             else:
                 tk.Label(frame, image=self.card_image(card, 5), bg="#0b542d").pack()
                 tk.Label(frame, text=self.card_value_text(card), bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
-            frame.pack(side="left", padx=4)
+            frame.grid(row=0, column=len(self.dealer_card_frames), padx=4)
             self.dealer_card_frames.append(frame)
             return
         assert player_index is not None
@@ -335,9 +340,7 @@ class BlackjackApp:
         hand = self.players[player_index].hands[hand_index]
         cards_frame = self.player_cards_frames[(player_index, hand_index)]
         card = hand.cards[-1]
-        compactness = 850 if len(self.players[player_index].hands) > 1 else 650
-        available_width = max(100, self.root.winfo_width() // max(1, min(5, len(self.players))) - 30)
-        card_factor = max(6, ceil(compactness * max(4, len(hand.cards)) / available_width))
+        card_factor = 8
         card_frame = tk.Frame(
             cards_frame,
             bg="#0b542d",
@@ -369,7 +372,7 @@ class BlackjackApp:
         else:
             x_position = card_width + first_gap + overlap_step * (card_index - 1)
         cards_frame.configure(
-            width=card_width * 2 + first_gap + overlap_step * max(0, card_index - 1),
+            width=max(190, card_width * 2 + first_gap + overlap_step * max(0, card_index - 1)),
             height=card_height + 20,
         )
         card_frame.place(x=x_position, y=0)
@@ -508,6 +511,8 @@ class BlackjackApp:
             hand.stood = True
             self.players[player_index].current_hand += 1
             self.advance_automatic_players()
+        else:
+            self.update_action_buttons()
 
     def double_down(self) -> None:
         if self.dealing or self.round_over or self.current_player >= len(self.players) or not self.can_double():
@@ -601,7 +606,7 @@ class BlackjackApp:
                 elif hand.is_blackjack() and not self.dealer.is_blackjack():
                     result = "BLACKJACK!"
                 elif self.dealer.is_bust():
-                    result = "vince (dealer sballato)"
+                    result = "vince"
                 elif value > dealer_value:
                     result = "vince"
                 elif value == dealer_value:
@@ -610,7 +615,7 @@ class BlackjackApp:
                     result = "perde"
                 if result == "BLACKJACK!":
                     player.credits += ceil(bet * 2.5)
-                elif result in {"vince", "vince (dealer sballato)"}:
+                elif result == "vince":
                     player.credits += ceil(bet * 2)
                 elif result == "pareggio":
                     player.credits += ceil(bet)
@@ -678,24 +683,27 @@ class BlackjackApp:
             if hide_dealer and index == 1:
                 label = tk.Frame(
                     self.dealer_cards,
-                    width=88,
-                    height=128,
+                    width=108,
+                    height=165,
                     bg="#173c2b",
                     highlightthickness=2 if is_effect_card else 1,
                     highlightbackground="#f8d66d",
                 )
-                label.pack_propagate(False)
+                label.grid_propagate(False)
                 tk.Label(label, text="?", bg="#173c2b", fg="#f8d66d", font=("Segoe UI", 22, "bold")).place(relx=0.5, rely=0.5, anchor="center")
             else:
                 label = tk.Frame(
                     self.dealer_cards,
+                    width=108,
+                    height=165,
                     bg="#0b542d",
                     highlightthickness=2 if is_effect_card else 0,
                     highlightbackground="#f8d66d",
                 )
+                label.grid_propagate(False)
                 tk.Label(label, image=self.card_image(card, 5), bg="#0b542d").pack()
                 tk.Label(label, text=self.card_value_text(card), bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
-            label.pack(side="left", padx=4)
+            label.grid(row=0, column=index, padx=4)
         shown_value = "?" if hide_dealer else ("sballato" if self.dealer.is_bust() else str(self.dealer.value()[0]))
         self.dealer_value_label.config(text=f"Valore: {shown_value}")
         for widget in self.players_frame.winfo_children():
@@ -713,9 +721,8 @@ class BlackjackApp:
             box.grid_propagate(False)
             box.grid(row=index // columns, column=index % columns, sticky="nsew", padx=5, pady=4)
             self.player_boxes.append(box)
-            available_width = max(100, self.root.winfo_width() // max(1, columns) - 30)
             box.columnconfigure(0, weight=1)
-            box.columnconfigure(1, weight=2)
+            box.columnconfigure(1, weight=0)
             box.rowconfigure(0, weight=1)
             info_frame = tk.Frame(box, bg=background)
             info_frame.grid(row=0, column=0, sticky="nsew", padx=(5, 2), pady=6)
@@ -729,6 +736,8 @@ class BlackjackApp:
                 font=("Segoe UI", 9, "bold"),
             ).pack(anchor="nw")
             hands_frame = tk.Frame(box, bg=background)
+            hands_frame.configure(width=190)
+            hands_frame.grid_propagate(False)
             hands_frame.grid(row=0, column=1, sticky="ne", padx=(2, 5), pady=4)
             for hand_index, hand in enumerate(player.hands):
                 hand_frame = tk.Frame(hands_frame, bg=background)
@@ -741,8 +750,7 @@ class BlackjackApp:
                 cards = tk.Frame(hand_frame, bg=background)
                 cards.pack(anchor="e")
                 self.player_cards_frames[(index, hand_index)] = cards
-                compactness = 850 if len(player.hands) > 1 else 650
-                card_factor = max(6, ceil(compactness * max(4, len(hand.cards)) / available_width))
+                card_factor = 8
                 for card_index, card in enumerate(hand.cards):
                     is_effect_card = (
                         self.deal_effect == ("player", index)
@@ -778,7 +786,7 @@ class BlackjackApp:
                     bg=background,
                     fg=result_color,
                     font=("Segoe UI", 8, "bold"),
-                    wraplength=max(90, available_width // 2),
+                    wraplength=max(90, box_width // 2),
                     justify="left",
                     anchor="sw",
                 ).pack(side="bottom", anchor="sw")
