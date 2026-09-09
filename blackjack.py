@@ -330,8 +330,9 @@ class BlackjackApp:
             else:
                 tk.Label(frame, image=self.card_image(card, 5), bg="#0b542d").pack()
                 tk.Label(frame, text=self.card_value_text(card), bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
-            frame.grid(row=0, column=len(self.dealer_card_frames), padx=4)
+            frame.place(x=len(self.dealer_card_frames) * 116 + 4, y=0)
             self.dealer_card_frames.append(frame)
+            self.dealer_cards.configure(width=max(240, len(self.dealer_card_frames) * 116))
             return
         assert player_index is not None
         self.add_player_card(player_index, 0, highlight=True)
@@ -532,15 +533,17 @@ class BlackjackApp:
     def split_hand(self) -> None:
         if self.dealing or self.round_over or self.current_player >= len(self.players) or not self.can_split():
             return
-        player = self.players[self.current_player]
+        player_index = self.current_player
+        player = self.players[player_index]
+        hand_index = player.current_hand
         hand = player.active_hand()
-        bet = player.hand_bets[player.current_hand]
+        bet = player.hand_bets[hand_index]
         player.credits -= bet
         first, second = hand.cards
         first_hand = Hand(cards=[first], natural_eligible=False)
         second_hand = Hand(cards=[second], natural_eligible=False)
-        player.hands[player.current_hand:player.current_hand + 1] = [first_hand, second_hand]
-        player.hand_bets[player.current_hand:player.current_hand + 1] = [bet, bet]
+        player.hands[hand_index:hand_index + 1] = [first_hand, second_hand]
+        player.hand_bets[hand_index:hand_index + 1] = [bet, bet]
         player.bet += bet
         first_hand.cards.append(self.deck.pop())
         second_hand.cards.append(self.deck.pop())
@@ -549,7 +552,55 @@ class BlackjackApp:
             second_hand.stood = True
         self.advance_automatic_players()
         if not self.round_over:
-            self.render(hide_dealer=True)
+            self.render_split_hand(player_index, hand_index)
+
+    def render_split_hand(self, player_index: int, hand_index: int) -> None:
+        player = self.players[player_index]
+        first_cards = self.player_cards_frames[(player_index, hand_index)]
+        background = "#145f38" if player_index == self.current_player and not self.round_over else "#0b542d"
+
+        for widget in first_cards.winfo_children():
+            widget.destroy()
+        first_cards.configure(bg=background)
+        for card_index, card in enumerate(player.hands[hand_index].cards):
+            card_frame = tk.Frame(first_cards, bg=background)
+            tk.Label(card_frame, image=self.card_image(card, 8), bg=background).pack()
+            value_label = tk.Label(first_cards, text=self.card_value_text(card), bg=background, fg="#f8d66d", font=("Segoe UI", 9, "bold"))
+            self.position_player_card(first_cards, card_frame, value_label, card_index)
+
+        hand_label = self.hand_labels[(player_index, hand_index)]
+        hand_label.configure(text=f"Mano {hand_index + 1}" + ("  <- attiva" if player_index == self.current_player and not self.round_over else ""))
+        self.update_hand_info(player_index, hand_index)
+
+        hands_frame = first_cards.master.master
+        second_index = hand_index + 1
+        second_frame = tk.Frame(hands_frame, bg=background)
+        second_frame.pack(anchor="e", pady=(2, 5))
+        cards = tk.Frame(second_frame, bg=background)
+        cards.pack(anchor="e")
+        self.player_cards_frames[(player_index, second_index)] = cards
+        for card_index, card in enumerate(player.hands[second_index].cards):
+            card_frame = tk.Frame(cards, bg=background)
+            tk.Label(card_frame, image=self.card_image(card, 8), bg=background).pack()
+            value_label = tk.Label(cards, text=self.card_value_text(card), bg=background, fg="#f8d66d", font=("Segoe UI", 9, "bold"))
+            self.position_player_card(cards, card_frame, value_label, card_index)
+
+        info_frame = hand_label.master.master
+        hand_data = tk.Frame(info_frame, bg="#104a2d")
+        hand_data.pack(anchor="nw", pady=5)
+        second_label = tk.Label(hand_data, text=f"Mano {second_index + 1}" + ("  <- attiva" if player_index == self.current_player and not self.round_over else ""), bg="#104a2d", fg="#f8d66d", font=("Segoe UI", 9, "bold"), justify="left")
+        second_label.pack(anchor="w")
+        value = "sballato" if player.hands[second_index].is_bust() else str(player.hands[second_index].value()[0])
+        suffix = "  (BLACKJACK)" if player.hands[second_index].is_blackjack() else ""
+        value_label = tk.Label(hand_data, text=f"Valore: {value}{suffix}", bg="#104a2d", fg="white", font=("Segoe UI", 8, "bold"), justify="left")
+        value_label.pack(anchor="w")
+        bet_label = tk.Label(hand_data, text=f"Puntata: {player.hand_bets[second_index]}", bg="#104a2d", fg="#f8d66d", font=("Segoe UI", 8, "bold"))
+        bet_label.pack(anchor="w")
+        self.hand_labels[(player_index, second_index)] = second_label
+        self.hand_value_labels[(player_index, second_index)] = value_label
+        self.hand_bet_labels[(player_index, second_index)] = bet_label
+        self.update_turn_visuals()
+        self.update_action_buttons()
 
     def stand(self) -> None:
         if self.dealing or self.round_over or self.current_player >= len(self.players):
@@ -703,7 +754,9 @@ class BlackjackApp:
                 label.grid_propagate(False)
                 tk.Label(label, image=self.card_image(card, 5), bg="#0b542d").pack()
                 tk.Label(label, text=self.card_value_text(card), bg="#0b542d", fg="#f8d66d", font=("Segoe UI", 9, "bold")).pack()
-            label.grid(row=0, column=index, padx=4)
+            label.place(x=index * 116 + 4, y=0)
+            self.dealer_card_frames.append(label)
+        self.dealer_cards.configure(width=max(240, len(self.dealer.cards) * 116))
         shown_value = "?" if hide_dealer else ("sballato" if self.dealer.is_bust() else str(self.dealer.value()[0]))
         self.dealer_value_label.config(text=f"Valore: {shown_value}")
         for widget in self.players_frame.winfo_children():
